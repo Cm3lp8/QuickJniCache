@@ -412,6 +412,7 @@ dependencies = [
 name = "jni-methods-cache"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "jni",
  "parking_lot",
  "winit",

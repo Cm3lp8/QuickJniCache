@@ -2,16 +2,13 @@
 mod jni_methods_cache;
 
 #[cfg(target_os = "android")]
-pub use crate::jni_methods_cache::builder::java_methods_build_handle;
-
-#[cfg(target_os = "android")]
 pub use crate::jni_methods_cache::call_java_method;
 #[cfg(target_os = "android")]
 pub use crate::jni_methods_cache::call_java_static_method;
 #[cfg(target_os = "android")]
 pub use jni::signature;
 #[cfg(target_os = "android")]
-pub use jni_methods_cache::{
+pub use jni_methods_cache::methods_cache::{
     java_method_cache_utils::{JavaArgs, MethodType, ReturnedValue},
     JavaMethodCache, JavaMethods,
 };
@@ -24,7 +21,7 @@ pub use signature::ReturnType;
 pub mod prelude {
     use super::*;
 
-    pub use jni_methods_cache::{
+    pub use jni_methods_cache::methods_cache::{
         java_method_cache_utils::{JavaArgs, MethodType, ReturnedValue},
         JavaMethodCache, JavaMethods,
     };

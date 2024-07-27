@@ -9,7 +9,7 @@ edition = "2021"
 
 jni = { version = "0.21.0", features = ["invocation"] }
 parking_lot = "0.12.2"
-
+crossbeam-channel = "0.5.12"
 
 winit = { path = "/home/camille/Documents/rust/cargo-mobile/patches/winit-0.28.7/", features = [
   "android-native-activity",
