@@ -2,80 +2,17 @@ use jni::objects::{
     JClass, JDoubleArray, JMethodID, JObject, JStaticMethodID, JString, JValue, JValueOwned,
 };
 use jni::signature::ReturnType;
-use jni::sys::{jobject, JNIEnv};
+use jni::sys::jobject;
 use jni::JavaVM;
-use parking_lot::Once;
-use std::fmt::Result;
 use std::mem;
-use winit::platform::android::activity::AndroidApp;
-
-use crate::jni_methods_cache::ACTIVITY;
-use crate::jni_methods_cache::INIT;
-use crate::jni_methods_cache::JAVAMETHODCACHE;
-use crate::jni_methods_cache::JAVAVM;
-use crate::jni_methods_cache::JNIENV;
 
 use crate::jni_methods_cache::executor::ExecutorChannel;
-pub use initializer::init_once;
 pub use java_method_build_tools::*;
+pub use java_vm_response::JVMResponse;
+pub use java_vm_response::JVMResult;
+pub use java_vm_response::JVMResultSender;
 
-mod initializer {
-    use super::*;
-    use crate::jni_methods_cache::methods_cache::java_method_build_tools::j_object_ref::JavaMethodsListRefs;
-    use crate::jni_methods_cache::methods_cache::java_method_build_tools::standard_class_finder::StandardClassPreList;
-    use java_method_build_tools::*;
-
-    pub fn init_once<'a: 'static>(
-        android_app: &AndroidApp,
-        build_cb: impl FnOnce(&mut JavaMethodCacheBuilder<'a>),
-    ) {
-        println!("i am here");
-        INIT.call_once(|| unsafe {
-            let jv_vm_ptr = unsafe { android_app.vm_as_ptr() as *mut jni::sys::JavaVM };
-            let java_vm = unsafe { jni::JavaVM::from_raw(jv_vm_ptr).unwrap() };
-            unsafe {
-                JAVAVM = Some(java_vm);
-            };
-            let res_env = JAVAVM
-                .as_ref()
-                .expect("no java vm attached")
-                .attach_current_thread_permanently();
-            let activity = unsafe {
-                JObject::from_raw(android_app.activity_as_ptr() as *mut jni::sys::_jobject)
-            };
-            let mut activity_2 = unsafe {
-                JObject::from_raw(android_app.activity_as_ptr() as *mut jni::sys::_jobject)
-            };
-
-            let java_vm_2 = unsafe { jni::JavaVM::from_raw(jv_vm_ptr).unwrap() };
-            unsafe {
-                JNIENV = None;
-                ACTIVITY = Some(activity);
-            }
-            let env: jni::JNIEnv =
-                unsafe { JAVAVM.as_ref().expect("no jvm").get_env().expect("No env") };
-            let mut java_method_builder = JavaMethodCacheBuilder {
-                env: Some(env),
-                activity: unsafe { Some(ACTIVITY.as_mut().expect("no native activity")) },
-                java_vm: unsafe { Some(&JAVAVM.as_ref().expect("no jvm")) },
-                standard_class_pre_list: StandardClassPreList::new(),
-                java_methods_list_ref: JavaMethodsListRefs::new(),
-                cache_builded: false,
-            };
-
-            build_cb(&mut java_method_builder);
-
-            java_method_builder.build(|cache| {
-                unsafe {
-                    JAVAMETHODCACHE = cache.set_to_java_methods();
-                    JAVAMETHODCACHE.build_cache()
-                };
-            });
-        });
-    }
-}
-
-mod java_method_build_tools {
+pub mod java_method_build_tools {
     use self::j_object_ref::{JavaMethodsList, JavaMethodsListRefs, JavaStaticMethodsList};
     use self::j_object_store::JObjectStore;
     use self::java_method_cache_utils::{JavaArgs, MethodType, ReturnedValue};
@@ -112,15 +49,6 @@ mod java_method_build_tools {
                             &mut cache.native_class_finder_2,
                         );
                         cache.cache_builded = true;
-                        println!("list of the methods ");
-                        for method in cache.static_method_list.methods_list() {
-                            println!(
-                                "- {:?}- [{:?}]- [{:?}]",
-                                method.method_name(),
-                                method.method_signature(),
-                                method.method_class()
-                            );
-                        }
                         println!("JavaMethodCache is correctly initialized !");
                     }
                 }
@@ -167,6 +95,7 @@ mod java_method_build_tools {
         ) -> std::result::Result<ReturnedValue, String> {
             match self {
                 JavaMethods::Cache { cache } => {
+                    let time = std::time::Instant::now();
                     if let Ok(r) = cache.call_static_method(
                         class,
                         name,
@@ -175,6 +104,7 @@ mod java_method_build_tools {
                         return_type,
                         returned_object_id,
                     ) {
+                        println!("in JavaMethodCach call time [{:?}]", time.elapsed());
                         Ok(r)
                     } else {
                         Err(
@@ -245,11 +175,6 @@ mod java_method_build_tools {
             j_object_store.add_object_with_id("native_activity", unsafe {
                 JObject::from_raw(activity_raw_ptr)
             });
-
-            println!(
-                "pre-list of the methods that we want to cache after jni look up \n [{:#?}]",
-                self.java_methods_list_ref
-            );
 
             let mut java_method_cache = JavaMethodCache {
                 env: env.expect("no env attached to JavaMethodCache"),
@@ -329,21 +254,8 @@ mod java_method_build_tools {
             return_type: ReturnType,
             object_id: Option<String>,
         ) -> std::result::Result<ReturnedValue, ()> {
-            println!(
-                "Is calling static method caller ... [{}]-[{}]-[{}]",
-                class, method_name, sig
-            );
-            for e in self.static_method_list.methods_list() {
-                println!("static [{:?}]", e);
-            }
-
+            let now = std::time::Instant::now();
             let find_method = self.static_method_list.list_as_mut().iter_mut().find(|m| {
-                println!(
-                    "class [{:?}]  name [{:?}]  sig [{:?}]",
-                    m.method_class(),
-                    m.method_name(),
-                    m.method_signature()
-                );
                 m.method_class() == class
                     && m.method_name() == method_name
                     && m.method_signature() == sig
@@ -352,12 +264,8 @@ mod java_method_build_tools {
             let mut res: Option<JValueOwned> = None;
 
             if let Some(find_method) = find_method {
-                println!(
-                    "Static method [{:?}  [{}] [{}]] has been found !",
-                    class, method_name, sig
-                );
-
                 if let Some(args) = args.to_jvalue(&self.instanciate_jobjects) {
+                    let call_time = std::time::Instant::now();
                     unsafe {
                         let result: JValueOwned = self
                             .env
@@ -372,8 +280,14 @@ mod java_method_build_tools {
                             });
 
                         res = Some(result);
+                        println!(
+                            "   > the call time [{:?}] for class[{:?}]",
+                            call_time.elapsed(),
+                            class
+                        );
                     }
                 } else {
+                    let now = std::time::Instant::now();
                     unsafe {
                         let result: JValueOwned = self
                             .env
@@ -395,13 +309,19 @@ mod java_method_build_tools {
             };
 
             if let Some(result) = res {
-                Ok(ReturnedValue::get_result_type(
+                let result = Ok(ReturnedValue::get_result_type(
                     &mut self.env,
                     result,
                     &self.standard_class_cache,
                     object_id,
                     &mut self.instanciate_jobjects,
-                ))
+                ));
+                println!(
+                    "      >time inside call fn [{:?}]   class [{:?}]",
+                    now.elapsed(),
+                    class
+                );
+                result
             } else {
                 Err(())
             }
@@ -415,12 +335,6 @@ mod java_method_build_tools {
             return_type: ReturnType,
             object_id: Option<String>,
         ) -> std::result::Result<ReturnedValue, ()> {
-            println!(
-                "Is calling method caller ... [{}]-[{}]-[{}]",
-                class, method_name, sig
-            );
-
-            self.print_method_list();
             let find_method = self.method_list.list_as_mut().iter_mut().find(|m| {
                 m.method_class() == class
                     && m.method_name() == method_name
@@ -430,13 +344,7 @@ mod java_method_build_tools {
             let mut res: Option<JValueOwned> = None;
 
             if let Some(find_method) = find_method {
-                println!(
-                    "Method [{:?}  [{}] [{}]] has been found !",
-                    class, method_name, sig
-                );
-
                 if let Some(args) = args.to_jvalue(&self.instanciate_jobjects) {
-                    println!("PLaying");
                     unsafe {
                         let result: JValueOwned = self
                             .env
@@ -553,8 +461,6 @@ mod java_method_build_tools {
 
     pub mod j_object_ref {
 
-        use std::collections::HashMap;
-
         use jni::JNIEnv;
 
         use super::*;
@@ -626,13 +532,11 @@ mod java_method_build_tools {
 
                 for method_ref in &mut list_refs.methods_list.iter().filter(|item| {
                     if let MethodType::NonStatic = item.method_type {
-                        println!(" Non static found -> {}", item.method_name());
                         true
                     } else {
                         false
                     }
                 }) {
-                    println!("building for method [{}]", method_ref.method_name());
                     let instance_ref: JObject = unsafe {
                         env.call_method_unchecked(
                             &native_class_finder.class_loader,
@@ -673,11 +577,6 @@ mod java_method_build_tools {
                         method_ref.method_name().as_str(),
                         method_ref.method_signature().as_str(),
                         method_id,
-                    );
-
-                    println!(
-                        "ICI la methode non static [{:?}] trouvée !",
-                        new_method.method_name()
                     );
 
                     self.methods_list.push(new_method);
@@ -753,14 +652,12 @@ mod java_method_build_tools {
 
                 for method_ref in &mut list_refs.methods_list.iter().filter(|item| {
                     if let MethodType::Static = item.method_type {
-                        println!("static found");
                         true
                     } else {
                         println!("non static found");
                         false
                     }
                 }) {
-                    println!("building for method [{}]", method_ref.method_name());
                     let instance_ref: JObject = unsafe {
                         env.call_method_unchecked(
                             &native_class_finder.class_loader,
@@ -803,10 +700,7 @@ mod java_method_build_tools {
                         method_id,
                     );
 
-                    println!("ICI la methode [{:?}] trouvée !", method_ref.method_name());
-
                     self.methods_list.push(new_method);
-                    println!("ici la liste à jour [{:?}]", self.methods_list);
                 }
             }
         }
@@ -946,7 +840,7 @@ mod java_method_build_tools {
         }
 
         pub enum ReturnedValue {
-            I32,
+            I32(i32),
             JObject(String),
             Void,
             Long(i64),
@@ -968,7 +862,6 @@ mod java_method_build_tools {
             ) -> ReturnedValue {
                 match result {
                     JValueGen::Object(o) => {
-                        println!("entering the returned value handler !");
                         match check_if_extractible_classes(env, standard_class_list, o.as_raw()) {
                             Extractible::Yes(class_name, obj, env_passed) => {
                                 extract_value(env_passed, class_name, obj).unwrap()
@@ -1003,13 +896,10 @@ mod java_method_build_tools {
                     Some(ReturnedValue::String(rust_string))
                 }
                 "[D" => {
-                    println!("-> Returning an array of double !! ");
-
                     let j_double_array: JDoubleArray = JDoubleArray::from(object);
 
                     let length: usize = env.get_array_length(&j_double_array).unwrap() as usize;
                     let mut buffer: Vec<jni::sys::jdouble> = vec![0.0; length];
-                    println!("array double len [{:?}]", length);
 
                     let _double_array_region = env
                         .get_double_array_region(j_double_array, 0, &mut buffer)
@@ -1036,18 +926,11 @@ mod java_method_build_tools {
             for class in standard_class_list.inner.iter() {
                 let (class_name_ref, class) = class.get_class_ref();
 
-                println!("-> class cached : [{:?}]", class_name_ref);
-
                 let is_std_class: bool = env
                     .is_instance_of(unsafe { JObject::from_raw(o) }, class)
                     .unwrap();
 
                 if is_std_class {
-                    println!(
-                        "-----> Object returned by the function is from the standard class [{:?}]",
-                        class_name_ref
-                    );
-
                     extractible =
                         Extractible::Yes(class_name_ref, unsafe { JObject::from_raw(o) }, env);
                     break;
@@ -1055,11 +938,6 @@ mod java_method_build_tools {
             }
             extractible
         }
-    }
-
-    mod java_method_cache_traits {
-
-        use super::*;
     }
 
     mod j_object_store {
@@ -1145,10 +1023,8 @@ mod java_method_build_tools {
                 standard_class_pre_list: &StandardClassPreList,
             ) {
                 for class_name in standard_class_pre_list.list.iter() {
-                    println!("standard_class being processed [{:?}]", class_name);
                     match env.find_class(class_name) {
                         Ok(class) => {
-                            println!("Class found for [{:?}]", class_name);
                             let new_std_class = StandardClass::new(class_name, class);
                             self.inner.push(new_std_class);
                         }
@@ -1181,6 +1057,129 @@ mod java_method_build_tools {
             pub fn get_class_ref(&self) -> (&str, &JClass) {
                 (self.class_name.as_str(), &self.class)
             }
+        }
+    }
+}
+
+mod java_vm_response {
+    use std::{fmt::Debug, ops::Deref, time::Instant};
+
+    use crate::ReturnedValue;
+
+    #[derive(Debug)]
+    pub struct JVMResult {
+        channel: (
+            crossbeam_channel::Sender<(ReturnedValue, Instant)>,
+            crossbeam_channel::Receiver<(ReturnedValue, Instant)>,
+        ),
+    }
+    impl JVMResult {
+        pub fn new() -> Self {
+            Self {
+                channel: crossbeam_channel::bounded(1),
+            }
+        }
+        pub fn get_sender(&self) -> JVMResultSender {
+            JVMResultSender {
+                sender: self.channel.0.clone(),
+            }
+        }
+
+        pub fn wait_for_result(&self) -> std::result::Result<JVMResponseWrapper, ()> {
+            if let Ok((res, now)) = self.channel.1.recv() {
+                println!("waiting for result over chan [{:?}]", now.elapsed());
+                let result: JVMResponseWrapper = match res {
+                    ReturnedValue::I32(i) => JVMResponseWrapper::new(i),
+                    ReturnedValue::Long(v) => JVMResponseWrapper::new(v),
+                    ReturnedValue::String(s) => JVMResponseWrapper::new(s),
+                    _ => JVMResponseWrapper::new(()),
+                };
+
+                Ok(result)
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct JVMResultSender {
+        sender: crossbeam_channel::Sender<(ReturnedValue, Instant)>,
+    }
+
+    impl JVMResultSender {
+        pub fn send(
+            &self,
+            value: ReturnedValue,
+        ) -> std::result::Result<(), crossbeam_channel::SendError<(ReturnedValue, Instant)>>
+        {
+            let now = std::time::Instant::now();
+            self.sender.send((value, now))
+        }
+    }
+
+    pub struct JVMResponseWrapper {
+        inner: Box<dyn DynJVMResponse>,
+    }
+
+    impl JVMResponseWrapper {
+        fn new(value: impl JVMResponse + 'static) -> Self {
+            let value = Box::new(value);
+            JVMResponseWrapper { inner: value }
+        }
+
+        pub fn to_value<T: 'static + JVMResponse>(
+            &self,
+        ) -> std::result::Result<Box<T>, Box<dyn std::any::Any>> {
+            self.inner.get_value().downcast::<T>()
+        }
+    }
+    impl Deref for JVMResponseWrapper {
+        type Target = dyn DynJVMResponse;
+        fn deref(&self) -> &Self::Target {
+            &*self.inner
+        }
+    }
+
+    pub trait DynJVMResponse {
+        fn get_value(&self) -> Box<dyn std::any::Any>;
+    }
+
+    impl<T: 'static + JVMResponse> DynJVMResponse for T
+    where
+        T::Item: 'static,
+    {
+        fn get_value(&self) -> Box<dyn std::any::Any> {
+            Box::new(JVMResponse::get_value(self))
+        }
+    }
+    pub trait JVMResponse {
+        type Item;
+        fn get_value(&self) -> Self::Item;
+    }
+    impl JVMResponse for () {
+        type Item = ();
+        fn get_value(&self) -> Self::Item {
+            *self
+        }
+    }
+
+    impl JVMResponse for i64 {
+        type Item = i64;
+        fn get_value(&self) -> Self::Item {
+            *self
+        }
+    }
+    impl JVMResponse for String {
+        type Item = String;
+        fn get_value(&self) -> Self::Item {
+            self.to_owned()
+        }
+    }
+    impl JVMResponse for i32 {
+        type Item = i32;
+        fn get_value(&self) -> Self::Item {
+            *self
         }
     }
 }

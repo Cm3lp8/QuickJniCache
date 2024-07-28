@@ -1,3 +1,4 @@
+use crate::jni_methods_cache::methods_cache::{JVMResponse, JVMResult, JVMResultSender};
 pub use channel::ExecutorChannel;
 pub use event_handler::run;
 pub use executor_receiver::ExecutorReceiver;
@@ -5,18 +6,22 @@ use jvm_call_event::*;
 pub use jvm_caller::JvmCaller;
 
 mod jvm_call_event {
+    use std::time::Instant;
+
     use super::*;
     use crate::{JavaArgs, ReturnType};
 
     #[derive(Debug)]
     pub enum JvmCallEvent {
         CallStaticMethod {
+            response_channel: JVMResultSender,
             class_name: String,
             method_name: String,
             sig: String,
             args: JavaArgs,
             return_type: ReturnType,
             returned_object_id: Option<String>,
+            instant: Instant,
         },
         CallMethod,
     }
@@ -54,42 +59,49 @@ mod jvm_caller {
 
     pub struct JvmCaller {
         event_channel: crossbeam_channel::Sender<JvmCallEvent>,
+        jvm_result: JVMResult,
     }
     impl JvmCaller {
         pub fn new(sender: crossbeam_channel::Sender<JvmCallEvent>) -> Self {
             JvmCaller {
                 event_channel: sender,
+                jvm_result: JVMResult::new(),
             }
         }
-        pub fn call_static_method<T>(
+        pub fn call_static_method<T: 'static + JVMResponse>(
             &self,
             class_name: &str,
             method_name: &str,
             sig: &str,
             args: JavaArgs,
             return_type: ReturnType,
-            returned_object_id: Option<&str>,
+            returned_object_id: Option<String>,
         ) -> Result<T, ()> {
+            let instant = std::time::Instant::now();
             let msg = JvmCallEvent::CallStaticMethod {
+                response_channel: self.jvm_result.get_sender(),
                 class_name: class_name.to_owned(),
                 method_name: method_name.to_owned(),
                 sig: sig.to_owned(),
                 args,
                 return_type,
-                returned_object_id: if let Some(v) = returned_object_id {
-                    Some(v.to_owned())
-                } else {
-                    None
-                },
+                returned_object_id,
+                instant,
             };
 
             if let Err(e) = self.event_channel.send(msg) {
                 println!("error in calling jvm")
-            } else {
-                println!("jvm call done !!")
             }
 
-            Err(())
+            if let Ok(res) = self.jvm_result.wait_for_result() {
+                if let Ok(r) = res.to_value() {
+                    Ok(*r)
+                } else {
+                    Err(())
+                }
+            } else {
+                Err(())
+            }
         }
     }
 }
@@ -120,25 +132,32 @@ mod event_handler {
 
     pub fn run(event_receiver: ExecutorReceiver) {
         while let Ok(event) = event_receiver.receive() {
-            println!("receiving call jvm in executor[{:?}] ", event);
             match event {
                 JvmCallEvent::CallStaticMethod {
+                    response_channel,
                     class_name,
                     method_name,
                     sig,
                     args,
                     return_type,
                     returned_object_id,
+                    instant,
                 } => {
-                    println!("new jvm call processed! ");
-                    call_java_static_method_internal(
+                    println!(
+                        "\n      time receiver event call jni [{:?}]   class [{:?}]",
+                        instant.elapsed(),
+                        class_name
+                    );
+                    if let Ok(res) = call_java_static_method_internal(
                         class_name.as_str(),
                         method_name.as_str(),
                         sig.as_str(),
                         args,
                         return_type,
                         returned_object_id,
-                    );
+                    ) {
+                        if let Ok(_) = response_channel.send(res) {}
+                    }
                 }
                 _ => {}
             }
@@ -147,7 +166,6 @@ mod event_handler {
 }
 
 mod jvm_method_caller {
-    use super::*;
     use crate::jni_methods_cache::JAVAMETHODCACHE;
     use crate::jni_methods_cache::{JavaArgs, ReturnType, ReturnedValue};
 
@@ -159,7 +177,7 @@ mod jvm_method_caller {
         return_type: ReturnType,
         returned_object_id: Option<String>,
     ) -> std::result::Result<ReturnedValue, String> {
-        unsafe {
+        let res = unsafe {
             JAVAMETHODCACHE.call_static_method(
                 class_name,
                 method_name,
@@ -168,7 +186,8 @@ mod jvm_method_caller {
                 return_type,
                 returned_object_id,
             )
-        }
+        };
+        res
     }
     pub fn call_java_method(
         class_name: &str,
