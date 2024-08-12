@@ -5,6 +5,7 @@ use parking_lot::Once;
 
 pub mod executor;
 pub mod methods_cache;
+pub mod thread_pool;
 
 use methods_cache::{
     java_method_cache_utils::{JavaArgs, ReturnedValue},

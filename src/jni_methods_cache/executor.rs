@@ -30,16 +30,13 @@ mod channel {
     use super::*;
 
     pub struct ExecutorChannel {
-        channel: (
-            crossbeam_channel::Sender<JvmCallEvent>,
-            crossbeam_channel::Receiver<JvmCallEvent>,
-        ),
+        channel: (kanal::Sender<JvmCallEvent>, kanal::Receiver<JvmCallEvent>),
     }
 
     impl ExecutorChannel {
         pub fn new() -> Self {
             ExecutorChannel {
-                channel: crossbeam_channel::unbounded(),
+                channel: kanal::unbounded(),
             }
         }
 
@@ -58,11 +55,11 @@ mod jvm_caller {
     use crate::{JavaArgs, ReturnType};
 
     pub struct JvmCaller {
-        event_channel: crossbeam_channel::Sender<JvmCallEvent>,
+        event_channel: kanal::Sender<JvmCallEvent>,
         jvm_result: JVMResult,
     }
     impl JvmCaller {
-        pub fn new(sender: crossbeam_channel::Sender<JvmCallEvent>) -> Self {
+        pub fn new(sender: kanal::Sender<JvmCallEvent>) -> Self {
             JvmCaller {
                 event_channel: sender,
                 jvm_result: JVMResult::new(),
@@ -110,16 +107,16 @@ mod executor_receiver {
     use super::*;
 
     pub struct ExecutorReceiver {
-        event_receiver: crossbeam_channel::Receiver<JvmCallEvent>,
+        event_receiver: kanal::Receiver<JvmCallEvent>,
     }
     impl ExecutorReceiver {
-        pub fn new(receiver: crossbeam_channel::Receiver<JvmCallEvent>) -> Self {
+        pub fn new(receiver: kanal::Receiver<JvmCallEvent>) -> Self {
             ExecutorReceiver {
                 event_receiver: receiver,
             }
         }
 
-        pub fn receive(&self) -> Result<JvmCallEvent, crossbeam_channel::RecvError> {
+        pub fn receive(&self) -> Result<JvmCallEvent, kanal::ReceiveError> {
             self.event_receiver.recv()
         }
     }
@@ -143,11 +140,6 @@ mod event_handler {
                     returned_object_id,
                     instant,
                 } => {
-                    println!(
-                        "\n      time receiver event call jni [{:?}]   class [{:?}]",
-                        instant.elapsed(),
-                        class_name
-                    );
                     if let Ok(res) = call_java_static_method_internal(
                         class_name.as_str(),
                         method_name.as_str(),

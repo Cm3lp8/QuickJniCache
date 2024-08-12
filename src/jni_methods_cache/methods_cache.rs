@@ -104,7 +104,6 @@ pub mod java_method_build_tools {
                         return_type,
                         returned_object_id,
                     ) {
-                        println!("in JavaMethodCach call time [{:?}]", time.elapsed());
                         Ok(r)
                     } else {
                         Err(
@@ -280,11 +279,6 @@ pub mod java_method_build_tools {
                             });
 
                         res = Some(result);
-                        println!(
-                            "   > the call time [{:?}] for class[{:?}]",
-                            call_time.elapsed(),
-                            class
-                        );
                     }
                 } else {
                     let now = std::time::Instant::now();
@@ -316,11 +310,6 @@ pub mod java_method_build_tools {
                     object_id,
                     &mut self.instanciate_jobjects,
                 ));
-                println!(
-                    "      >time inside call fn [{:?}]   class [{:?}]",
-                    now.elapsed(),
-                    class
-                );
                 result
             } else {
                 Err(())
@@ -839,6 +828,7 @@ pub mod java_method_build_tools {
             }
         }
 
+        #[derive(Clone)]
         pub enum ReturnedValue {
             I32(i32),
             JObject(String),
@@ -1069,14 +1059,14 @@ mod java_vm_response {
     #[derive(Debug)]
     pub struct JVMResult {
         channel: (
-            crossbeam_channel::Sender<(ReturnedValue, Instant)>,
-            crossbeam_channel::Receiver<(ReturnedValue, Instant)>,
+            kanal::Sender<(ReturnedValue, Instant)>,
+            kanal::Receiver<(ReturnedValue, Instant)>,
         ),
     }
     impl JVMResult {
         pub fn new() -> Self {
             Self {
-                channel: crossbeam_channel::bounded(1),
+                channel: kanal::bounded(1),
             }
         }
         pub fn get_sender(&self) -> JVMResultSender {
@@ -1087,7 +1077,6 @@ mod java_vm_response {
 
         pub fn wait_for_result(&self) -> std::result::Result<JVMResponseWrapper, ()> {
             if let Ok((res, now)) = self.channel.1.recv() {
-                println!("waiting for result over chan [{:?}]", now.elapsed());
                 let result: JVMResponseWrapper = match res {
                     ReturnedValue::I32(i) => JVMResponseWrapper::new(i),
                     ReturnedValue::Long(v) => JVMResponseWrapper::new(v),
@@ -1104,15 +1093,11 @@ mod java_vm_response {
 
     #[derive(Debug)]
     pub struct JVMResultSender {
-        sender: crossbeam_channel::Sender<(ReturnedValue, Instant)>,
+        sender: kanal::Sender<(ReturnedValue, Instant)>,
     }
 
     impl JVMResultSender {
-        pub fn send(
-            &self,
-            value: ReturnedValue,
-        ) -> std::result::Result<(), crossbeam_channel::SendError<(ReturnedValue, Instant)>>
-        {
+        pub fn send(&self, value: ReturnedValue) -> std::result::Result<(), kanal::SendError> {
             let now = std::time::Instant::now();
             self.sender.send((value, now))
         }
