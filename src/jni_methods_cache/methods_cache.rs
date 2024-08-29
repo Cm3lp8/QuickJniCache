@@ -278,6 +278,8 @@ pub mod java_method_build_tools {
                                 panic!("Error in calling static method [{}]", method_name);
                             });
 
+                        println!("l [{:?}]", result);
+
                         res = Some(result);
                     }
                 } else {
@@ -767,7 +769,7 @@ pub mod java_method_build_tools {
     pub mod java_method_cache_utils {
         use std::fmt::Debug;
 
-        use jni::objects::JValueGen;
+        use jni::objects::{JIntArray, JValueGen};
 
         use super::*;
 
@@ -837,6 +839,7 @@ pub mod java_method_build_tools {
             ArrayFloat,
             String(String),
             VecDouble(Vec<f64>),
+            VecUsize(Vec<usize>),
         }
         enum Extractible<'a> {
             Yes(&'a str, JObject<'a>, &'a mut jni::JNIEnv<'a>),
@@ -897,6 +900,18 @@ pub mod java_method_build_tools {
 
                     Some(ReturnedValue::VecDouble(
                         buffer.into_iter().map(|i| i as f64).collect(),
+                    ))
+                }
+                "[I" => {
+                    let j_int_array: JIntArray = JIntArray::from(object);
+
+                    let length: usize = env.get_array_length(&j_int_array).unwrap() as usize;
+                    let mut buffer: Vec<jni::sys::jint> = vec![0; length];
+                    let _int_array_region = env
+                        .get_int_array_region(j_int_array, 0, &mut buffer)
+                        .unwrap();
+                    Some(ReturnedValue::VecUsize(
+                        buffer.into_iter().map(|i| i as usize).collect(),
                     ))
                 }
                 _ => None,
@@ -1081,6 +1096,7 @@ mod java_vm_response {
                     ReturnedValue::I32(i) => JVMResponseWrapper::new(i),
                     ReturnedValue::Long(v) => JVMResponseWrapper::new(v),
                     ReturnedValue::String(s) => JVMResponseWrapper::new(s),
+                    ReturnedValue::VecUsize(u) => JVMResponseWrapper::new(u),
                     _ => JVMResponseWrapper::new(()),
                 };
 
@@ -1165,6 +1181,12 @@ mod java_vm_response {
         type Item = i32;
         fn get_value(&self) -> Self::Item {
             *self
+        }
+    }
+    impl JVMResponse for Vec<usize> {
+        type Item = Vec<usize>;
+        fn get_value(&self) -> Self::Item {
+            self.to_vec()
         }
     }
 }
