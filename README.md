@@ -15,7 +15,7 @@ In an Android application using rust, I encountered an issue where the Java envi
 
 ## Example
 
-You need to register methods like this :
+First, you need to register methods like this :
 
 ```rust 
 JavaMethodCache::init(&app, |builder| {
@@ -86,7 +86,98 @@ JavaMethodCache::init(&app, |builder| {
     });
 
 ```
+Then you can call the cache registered methods like this 
 
+```rust
+use jni_methods_cache::{call_java_static_method, JavaArgs, ReturnedValue};
+
+pub fn start_front_capture() {
+    let _ = call_java_static_method::<()>(
+        "com/example/new_test/OpenCamera",
+        "setCameraFrontOnOpen",
+        "(Landroid/app/NativeActivity;)V",
+        JavaArgs::JObject("native_activity".to_string()),
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+pub fn close_capture() {
+    let _ = call_java_static_method::<()>(
+        "com/example/new_test/OpenCamera",
+        "closeCameraDevice",
+        "()V",
+        JavaArgs::None,
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+pub fn start_back_capture() {
+    let _ = call_java_static_method::<()>(
+        "com/example/new_test/OpenCamera",
+        "setCameraBackOnOpen",
+        "(Landroid/app/NativeActivity;)V",
+        JavaArgs::JObject("native_activity".to_string()),
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+pub fn close_back_capture() {
+    let _ = call_java_static_method::<()>(
+        "com/example/new_test/OpenCamera",
+        "closeBackCameraDevice",
+        "()V",
+        JavaArgs::None,
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+pub fn init_vibrator() {
+    call_java_static_method::<()>(
+        "com/example/new_test/VibraTools",
+        "InitVibrator",
+        "(Landroid/app/NativeActivity;)V",
+        JavaArgs::JObject("native_activity".to_string()),
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+pub fn vibrate() {
+    call_java_static_method::<()>(
+        "com/example/new_test/VibraTools",
+        "vibrate",
+        "(Landroid/app/NativeActivity;)V",
+        JavaArgs::JObject("native_activity".to_string()),
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+
+pub fn audio_permission() {
+    let _ = call_java_static_method::<()>(
+        "com/example/new_test/AudioAuth",
+        "audioPermission",
+        "(Landroid/app/NativeActivity;)V",
+        JavaArgs::JObject("native_activity".to_string()),
+        ReturnType::Primitive(jni::signature::Primitive::Void),
+        None,
+    );
+}
+
+pub fn get_real_time() -> Option<i64> {
+    if let Ok(res) = call_java_static_method::<i64>(
+        "com/example/new_test/NanoTime",
+        "getRealNanoTimeSinceBoot",
+        "()J",
+        JavaArgs::None,
+        ReturnType::Primitive(jni::signature::Primitive::Long),
+        None,
+    ) {
+        Some(res)
+    } else {
+        None
+    }
+}
+```
 ## Features
 
  - Efficient Caching: Cache frequently used Java classes and methods to avoid repetitive lookups.
