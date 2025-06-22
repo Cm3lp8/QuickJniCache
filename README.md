@@ -13,6 +13,79 @@ QuickJniCache is designed to simplify the interaction between Rust and custom Ja
 
 In an Android application using rust, I encountered an issue where the Java environment couldn't find custom classes. To solve this, I created a mechanism to cache methods via the Activity object, ensuring that custom Java classes and methods are readily available for JNI calls.
 
+## Example
+
+You need to register methods like this :
+
+```rust 
+JavaMethodCache::init(&app, |builder| {
+        builder
+            .add_standard_class_name("java/lang/String")
+            .add_standard_class_name("[D")
+            .add_standard_class_name("[I")
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/VibraTools",
+                "InitVibrator",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/GpsAuth",
+                "requestLocationPermission",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/VibraTools",
+                "vibrate",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/OpenCamera",
+                "setCameraBackOnOpen",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/OpenCamera",
+                "setCameraFrontOnOpen",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/OpenCamera",
+                "closeCameraDevice",
+                "()V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/AudioAuth",
+                "audioPermission",
+                "(Landroid/app/NativeActivity;)V",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/NanoTime",
+                "getRealNanoTimeSinceBoot",
+                "()J",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/LocalFilePath",
+                "getLocalFileDir",
+                "(Landroid/app/NativeActivity;)Ljava/lang/String;",
+            )
+            .add_java_method(
+                MethodType::Static,
+                "com/example/new_test/OpenCamera",
+                "deviceResolution",
+                "(Landroid/app/NativeActivity;)[I",
+            );
+    });
+
+```
 
 ## Features
 
