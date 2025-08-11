@@ -249,7 +249,7 @@ pub mod java_method_build_tools {
             class: &str,
             method_name: &str,
             sig: &str,
-            args: JavaArgs,
+            mut args: JavaArgs,
             return_type: ReturnType,
             object_id: Option<String>,
         ) -> std::result::Result<ReturnedValue, ()> {
@@ -263,7 +263,7 @@ pub mod java_method_build_tools {
             let mut res: Option<JValueOwned> = None;
 
             if let Some(find_method) = find_method {
-                if let Some(args) = args.to_jvalue(&self.instanciate_jobjects) {
+                if let Some(args) = args.to_jvalue(&mut self.env, &self.instanciate_jobjects) {
                     let call_time = std::time::Instant::now();
                     unsafe {
                         let result: JValueOwned = self
@@ -277,7 +277,6 @@ pub mod java_method_build_tools {
                             .unwrap_or_else(|_| {
                                 panic!("Error in calling static method [{}]", method_name);
                             });
-
 
                         res = Some(result);
                     }
@@ -321,7 +320,7 @@ pub mod java_method_build_tools {
             class: &str,
             method_name: &str,
             sig: &str,
-            args: JavaArgs,
+            mut args: JavaArgs,
             return_type: ReturnType,
             object_id: Option<String>,
         ) -> std::result::Result<ReturnedValue, ()> {
@@ -334,7 +333,7 @@ pub mod java_method_build_tools {
             let mut res: Option<JValueOwned> = None;
 
             if let Some(find_method) = find_method {
-                if let Some(args) = args.to_jvalue(&self.instanciate_jobjects) {
+                if let Some(args) = args.to_jvalue(&mut self.env, &self.instanciate_jobjects) {
                     unsafe {
                         let result: JValueOwned = self
                             .env
@@ -766,9 +765,12 @@ pub mod java_method_build_tools {
     }
 
     pub mod java_method_cache_utils {
-        use std::fmt::Debug;
+        use std::{fmt::Debug, sync::Arc};
 
-        use jni::objects::{JIntArray, JValueGen};
+        use jni::{
+            objects::{JIntArray, JValueGen},
+            JNIEnv,
+        };
 
         use super::*;
 
@@ -781,6 +783,8 @@ pub mod java_method_build_tools {
         #[derive(Debug)]
         pub enum JavaArgs {
             JObject(String),
+            JLong(i64),
+            DirectByteBuffer(Arc<std::sync::Mutex<Vec<u8>>>),
             I32(i32),
             F32,
             None,
@@ -789,10 +793,20 @@ pub mod java_method_build_tools {
 
         impl JavaArgs {
             pub fn to_jvalue(
-                &self,
+                &mut self,
+                env: &mut JNIEnv<'_>,
                 instanciated_j_objects: &JObjectStore,
             ) -> Option<Vec<jni::sys::jvalue>> {
                 match self {
+                    JavaArgs::DirectByteBuffer(buffer) => {
+                        let buffer = &mut *buffer.lock().unwrap();
+                        let len = buffer.len();
+                        let direct_buffer = unsafe {
+                            env.new_direct_byte_buffer(buffer.as_mut_ptr() as *mut u8, len)
+                                .expect("can't build direct buffer")
+                        };
+                        Some(vec![JValueGen::Object(direct_buffer).as_jni()])
+                    }
                     JavaArgs::JObject(o_id) => {
                         if let Some(found_object) = instanciated_j_objects.find(o_id) {
                             Some(vec![JValueGen::Object(found_object).as_jni()])
@@ -803,7 +817,7 @@ pub mod java_method_build_tools {
                     JavaArgs::Array(arr) => {
                         let mut args_arr: Vec<jni::sys::jvalue> = vec![];
 
-                        for item in arr.iter() {
+                        for item in arr.iter_mut() {
                             match item {
                                 JavaArgs::JObject(o_id) => {
                                     if let Some(found_object) = instanciated_j_objects.find(o_id) {
@@ -812,6 +826,23 @@ pub mod java_method_build_tools {
                                 }
                                 JavaArgs::I32(v) => {
                                     args_arr.push(JValue::from(*v).as_jni());
+                                }
+                                JavaArgs::JLong(v) => {
+                                    args_arr.push(JValue::from(*v).as_jni());
+                                }
+                                JavaArgs::DirectByteBuffer(buffer) => {
+                                    let buffer = &mut *buffer.lock().unwrap();
+
+                                    let len = buffer.len();
+                                    let direct_buffer = unsafe {
+                                        env.new_direct_byte_buffer(
+                                            buffer.as_mut_ptr() as *mut u8,
+                                            len,
+                                        )
+                                        .expect("can't build direct buffer")
+                                    };
+
+                                    args_arr.push(JValueGen::Object(direct_buffer).as_jni());
                                 }
                                 _ => {}
                             };
