@@ -1,3 +1,4 @@
+#![allow(warnings)]
 mod jni_methods_cache;
 mod platform;
 

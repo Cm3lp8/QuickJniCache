@@ -278,7 +278,6 @@ pub mod java_method_build_tools {
                                 panic!("Error in calling static method [{}]", method_name);
                             });
 
-                        println!("l [{:?}]", result);
 
                         res = Some(result);
                     }
