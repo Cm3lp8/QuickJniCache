@@ -786,12 +786,33 @@ pub mod java_method_build_tools {
             JLong(i64),
             DirectByteBuffer(Arc<std::sync::Mutex<Vec<u8>>>),
             I32(i32),
+            Bool(bool),
             F32,
             None,
             Array(Vec<JavaArgs>),
         }
 
         impl JavaArgs {
+            pub fn get_u64_value_at(&self, index: usize) -> Option<u64> {
+                match self {
+                    Self::Array(array) => {
+                        if let Some(entry) = array.get(index) {
+                            match entry {
+                                Self::JLong(j) => {
+                                    return Some(*j as u64);
+                                }
+                                _ => {}
+                            };
+                            return None;
+                        } else {
+                            return None;
+                        }
+                        None::<u64>
+                    }
+                    _ => None,
+                };
+                None
+            }
             pub fn to_jvalue(
                 &mut self,
                 env: &mut JNIEnv<'_>,
@@ -814,6 +835,8 @@ pub mod java_method_build_tools {
                             None
                         }
                     }
+                    JavaArgs::Bool(b) => Some(vec![JValue::from(*b).as_jni()]),
+                    JavaArgs::JLong(j) => Some(vec![JValue::from(*j).as_jni()]),
                     JavaArgs::Array(arr) => {
                         let mut args_arr: Vec<jni::sys::jvalue> = vec![];
 
@@ -826,6 +849,9 @@ pub mod java_method_build_tools {
                                 }
                                 JavaArgs::I32(v) => {
                                     args_arr.push(JValue::from(*v).as_jni());
+                                }
+                                JavaArgs::Bool(b) => {
+                                    args_arr.push(JValue::from(*b).as_jni());
                                 }
                                 JavaArgs::JLong(v) => {
                                     args_arr.push(JValue::from(*v).as_jni());

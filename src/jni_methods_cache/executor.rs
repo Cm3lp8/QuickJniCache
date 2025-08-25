@@ -75,6 +75,8 @@ mod jvm_caller {
             returned_object_id: Option<String>,
         ) -> Result<T, ()> {
             let instant = std::time::Instant::now();
+            let id = args.get_u64_value_at(0);
+
             let msg = JvmCallEvent::CallStaticMethod {
                 response_channel: self.jvm_result.get_sender(),
                 class_name: class_name.to_owned(),
@@ -87,7 +89,7 @@ mod jvm_caller {
             };
 
             if let Err(e) = self.event_channel.send(msg) {
-                println!("error in calling jvm")
+                println!("Jni error in calling jvm [{:?}]", e)
             }
 
             if let Ok(res) = self.jvm_result.wait_for_result() {
@@ -140,6 +142,7 @@ mod event_handler {
                     returned_object_id,
                     instant,
                 } => {
+                    let id = args.get_u64_value_at(0);
                     if let Ok(res) = call_java_static_method_internal(
                         class_name.as_str(),
                         method_name.as_str(),

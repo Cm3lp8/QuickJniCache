@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 /***** Java Method cache module ******/
 use jni::objects::JObject;
 use jni::signature::ReturnType;
@@ -26,7 +28,7 @@ pub fn build_jni_methods_cache() {
     unsafe { JAVAMETHODCACHE.build_cache() };
 }
 
-pub fn call_java_static_method<T: 'static + JVMResponse>(
+pub fn call_java_static_method<T: 'static + JVMResponse + Debug>(
     class_name: &str,
     method_name: &str,
     sig: &str,
@@ -35,7 +37,7 @@ pub fn call_java_static_method<T: 'static + JVMResponse>(
     returned_object_id: Option<String>,
 ) -> std::result::Result<T, ()> {
     unsafe {
-        JVMCALLER
+        let res = JVMCALLER
             .as_ref()
             .expect("no JVMCALLER")
             .call_static_method::<T>(
@@ -45,7 +47,9 @@ pub fn call_java_static_method<T: 'static + JVMResponse>(
                 args,
                 return_type,
                 returned_object_id,
-            )
+            );
+
+        res
     }
 }
 
