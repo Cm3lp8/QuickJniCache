@@ -783,6 +783,7 @@ pub mod java_method_build_tools {
         #[derive(Debug)]
         pub enum JavaArgs {
             JObject(String),
+            JString(String),
             JLong(i64),
             DirectByteBuffer(Arc<std::sync::Mutex<Vec<u8>>>),
             I32(i32),
@@ -834,6 +835,19 @@ pub mod java_method_build_tools {
                         } else {
                             None
                         }
+                    }
+                    JavaArgs::JString(value) => {
+                        let j_string = match env.new_string(value) {
+                            Ok(j_string) => j_string,
+                            Err(e) => {
+                                println!("jni_methods_cache::error env on string creation");
+                                return None;
+                            }
+                        };
+
+                        let jvalue_string: jni::sys::jobject = j_string.into_raw();
+
+                        Some(vec![jni::sys::jvalue { l: jvalue_string }])
                     }
                     JavaArgs::Bool(b) => Some(vec![JValue::from(*b).as_jni()]),
                     JavaArgs::JLong(j) => Some(vec![JValue::from(*j).as_jni()]),
