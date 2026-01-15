@@ -864,6 +864,21 @@ pub mod java_method_build_tools {
                                 JavaArgs::I32(v) => {
                                     args_arr.push(JValue::from(*v).as_jni());
                                 }
+                                JavaArgs::JString(value) => {
+                                    let j_string = match env.new_string(value) {
+                                        Ok(j_string) => j_string,
+                                        Err(e) => {
+                                            println!(
+                                                "jni_methods_cache::error env on string creation"
+                                            );
+                                            return None;
+                                        }
+                                    };
+
+                                    let jvalue_string: jni::sys::jobject = j_string.into_raw();
+
+                                    args_arr.push(jni::sys::jvalue { l: jvalue_string });
+                                }
                                 JavaArgs::Bool(b) => {
                                     args_arr.push(JValue::from(*b).as_jni());
                                 }
