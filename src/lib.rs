@@ -7,7 +7,7 @@ pub use crate::jni_methods_cache::call_java_static_method;
 pub use jni::signature;
 pub use jni_methods_cache::methods_cache::{
     java_method_cache_utils::{JavaArgs, MethodType, ReturnedValue},
-    JavaMethodCache, JavaMethods,
+    JavaMethodCache, JavaMethods, NullObject,
 };
 pub use signature::Primitive as JniPrimitive;
 pub use signature::ReturnType;

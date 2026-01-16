@@ -11,6 +11,7 @@ pub use java_method_build_tools::*;
 pub use java_vm_response::JVMResponse;
 pub use java_vm_response::JVMResult;
 pub use java_vm_response::JVMResultSender;
+pub use java_vm_response::NullObject;
 
 pub mod java_method_build_tools {
     use self::j_object_ref::{JavaMethodsList, JavaMethodsListRefs, JavaStaticMethodsList};
@@ -297,6 +298,7 @@ pub mod java_method_build_tools {
                                     method_name, e
                                 );
                             });
+
                         res = Some(result);
                     }
                 };
@@ -925,6 +927,7 @@ pub mod java_method_build_tools {
             String(String),
             VecDouble(Vec<f64>),
             VecUsize(Vec<usize>),
+            Null,
         }
         enum Extractible<'a> {
             Yes(&'a str, JObject<'a>, &'a mut jni::JNIEnv<'a>),
@@ -940,6 +943,9 @@ pub mod java_method_build_tools {
             ) -> ReturnedValue {
                 match result {
                     JValueGen::Object(o) => {
+                        if o.as_raw().is_null() {
+                            return ReturnedValue::Null;
+                        };
                         match check_if_extractible_classes(env, standard_class_list, o.as_raw()) {
                             Extractible::Yes(class_name, obj, env_passed) => {
                                 extract_value(env_passed, class_name, obj).unwrap()
@@ -1182,6 +1188,7 @@ mod java_vm_response {
                     ReturnedValue::Long(v) => JVMResponseWrapper::new(v),
                     ReturnedValue::String(s) => JVMResponseWrapper::new(s),
                     ReturnedValue::VecUsize(u) => JVMResponseWrapper::new(u),
+                    ReturnedValue::Null => JVMResponseWrapper::null(),
                     _ => JVMResponseWrapper::new(()),
                 };
 
@@ -1191,6 +1198,9 @@ mod java_vm_response {
             }
         }
     }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct NullObject;
 
     #[derive(Debug)]
     pub struct JVMResultSender {
@@ -1211,6 +1221,10 @@ mod java_vm_response {
     impl JVMResponseWrapper {
         fn new(value: impl JVMResponse + 'static) -> Self {
             let value = Box::new(value);
+            JVMResponseWrapper { inner: value }
+        }
+        fn null() -> Self {
+            let value = Box::new(NullObject);
             JVMResponseWrapper { inner: value }
         }
 
@@ -1249,6 +1263,13 @@ mod java_vm_response {
             *self
         }
     }
+    impl JVMResponse for NullObject {
+        type Item = NullObject;
+
+        fn get_value(&self) -> Self::Item {
+            *self
+        }
+    }
 
     impl JVMResponse for i64 {
         type Item = i64;
@@ -1258,6 +1279,12 @@ mod java_vm_response {
     }
     impl JVMResponse for String {
         type Item = String;
+        fn get_value(&self) -> Self::Item {
+            self.to_owned()
+        }
+    }
+    impl JVMResponse for Option<String> {
+        type Item = Option<String>;
         fn get_value(&self) -> Self::Item {
             self.to_owned()
         }

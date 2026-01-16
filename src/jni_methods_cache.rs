@@ -8,6 +8,7 @@ use parking_lot::Once;
 pub mod executor;
 pub mod methods_cache;
 pub mod thread_pool;
+pub use methods_cache::NullObject;
 
 use methods_cache::{
     java_method_cache_utils::{JavaArgs, ReturnedValue},
