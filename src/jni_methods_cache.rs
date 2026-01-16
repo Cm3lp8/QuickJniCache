@@ -36,7 +36,7 @@ pub fn call_java_static_method<T: 'static + JVMResponse + Debug>(
     args: JavaArgs,
     return_type: ReturnType,
     returned_object_id: Option<String>,
-) -> std::result::Result<T, ()> {
+) -> std::result::Result<Option<T>, ()> {
     unsafe {
         let res = JVMCALLER
             .as_ref()

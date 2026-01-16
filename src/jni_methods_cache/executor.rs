@@ -51,8 +51,10 @@ mod channel {
 }
 
 mod jvm_caller {
+    use std::any::{Any, TypeId};
+
     use super::*;
-    use crate::{JavaArgs, ReturnType};
+    use crate::{JavaArgs, NullObject, ReturnType};
 
     pub struct JvmCaller {
         event_channel: kanal::Sender<JvmCallEvent>,
@@ -73,7 +75,7 @@ mod jvm_caller {
             args: JavaArgs,
             return_type: ReturnType,
             returned_object_id: Option<String>,
-        ) -> Result<T, ()> {
+        ) -> Result<Option<T>, ()> {
             let instant = std::time::Instant::now();
             let id = args.get_u64_value_at(0);
 
@@ -93,10 +95,14 @@ mod jvm_caller {
             }
 
             if let Ok(res) = self.jvm_result.wait_for_result() {
-                if let Ok(r) = res.to_value() {
-                    Ok(*r)
+                if let Some(result) = res {
+                    if let Ok(r) = result.to_value() {
+                        Ok(Some(*r))
+                    } else {
+                        Err(())
+                    }
                 } else {
-                    Err(())
+                    Ok(None)
                 }
             } else {
                 Err(())

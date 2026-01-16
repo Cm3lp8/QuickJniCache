@@ -1181,15 +1181,15 @@ mod java_vm_response {
             }
         }
 
-        pub fn wait_for_result(&self) -> std::result::Result<JVMResponseWrapper, ()> {
+        pub fn wait_for_result(&self) -> std::result::Result<Option<JVMResponseWrapper>, ()> {
             if let Ok((res, now)) = self.channel.1.recv() {
-                let result: JVMResponseWrapper = match res {
-                    ReturnedValue::I32(i) => JVMResponseWrapper::new(i),
-                    ReturnedValue::Long(v) => JVMResponseWrapper::new(v),
-                    ReturnedValue::String(s) => JVMResponseWrapper::new(s),
-                    ReturnedValue::VecUsize(u) => JVMResponseWrapper::new(u),
-                    ReturnedValue::Null => JVMResponseWrapper::null(),
-                    _ => JVMResponseWrapper::new(()),
+                let result: Option<JVMResponseWrapper> = match res {
+                    ReturnedValue::I32(i) => Some(JVMResponseWrapper::new(i)),
+                    ReturnedValue::Long(v) => Some(JVMResponseWrapper::new(v)),
+                    ReturnedValue::String(s) => Some(JVMResponseWrapper::new(s)),
+                    ReturnedValue::VecUsize(u) => Some(JVMResponseWrapper::new(u)),
+                    ReturnedValue::Null => None,
+                    _ => Some(JVMResponseWrapper::new(())),
                 };
 
                 Ok(result)
