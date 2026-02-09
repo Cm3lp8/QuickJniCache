@@ -99,12 +99,15 @@ mod jvm_caller {
                     if let Ok(r) = result.to_value() {
                         Ok(Some(*r))
                     } else {
+                        println!("JNI Cerror");
                         Err(())
                     }
                 } else {
+                    println!("JNI ERRORNONE");
                     Ok(None)
                 }
             } else {
+                println!("JNI C Wait Error");
                 Err(())
             }
         }
@@ -149,7 +152,8 @@ mod event_handler {
                     instant,
                 } => {
                     let id = args.get_u64_value_at(0);
-                    if let Ok(res) = call_java_static_method_internal(
+
+                    match call_java_static_method_internal(
                         class_name.as_str(),
                         method_name.as_str(),
                         sig.as_str(),
@@ -157,7 +161,10 @@ mod event_handler {
                         return_type,
                         returned_object_id,
                     ) {
-                        if let Ok(_) = response_channel.send(res) {}
+                        Ok(res) => if let Ok(_) = response_channel.send(res) {},
+                        Err(e) => {
+                            println!("  JNI Exe A[{:?}]", e);
+                        }
                     }
                 }
                 _ => {}

@@ -1,4 +1,5 @@
 #![allow(warnings)]
+#![cfg(target_os = "android")]
 mod jni_methods_cache;
 mod platform;
 

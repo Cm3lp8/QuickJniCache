@@ -50,7 +50,6 @@ pub mod java_method_build_tools {
                             &mut cache.native_class_finder_2,
                         );
                         cache.cache_builded = true;
-                        println!("JavaMethodCache is correctly initialized !");
                     }
                 }
                 _ => {
@@ -97,7 +96,8 @@ pub mod java_method_build_tools {
             match self {
                 JavaMethods::Cache { cache } => {
                     let time = std::time::Instant::now();
-                    if let Ok(r) = cache.call_static_method(
+
+                    match cache.call_static_method(
                         class,
                         name,
                         sig,
@@ -105,12 +105,11 @@ pub mod java_method_build_tools {
                         return_type,
                         returned_object_id,
                     ) {
-                        Ok(r)
-                    } else {
-                        Err(
-                            "error while receiving response from java static method call "
-                                .to_string(),
-                        )
+                        Ok(r) => Ok(r),
+                        Err(e) => Err(format!(
+                            "error while receiving response from java static method call [{:?}]",
+                            e
+                        )),
                     }
                 }
                 _ => Err("No cache initialized in java_method_cache !".to_string()),
