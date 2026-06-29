@@ -14,6 +14,7 @@ kanal = "0.1.0-pre8"
 tokio = { version = "1.39.2", features = ["full"] }
 serde = "1.0.209"
 bincode = "1.3.3"
+log = "0.4.29"
 
 [target.'cfg(target_os = "android")'.dependencies]
 winit = { version = "0.30.5", features = ["android-native-activity"] }

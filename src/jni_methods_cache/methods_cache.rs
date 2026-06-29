@@ -36,7 +36,7 @@ pub mod java_method_build_tools {
                 JavaMethods::Cache { cache } => {
                     if !cache.cache_builded {
                         cache.standard_class_cache.build_standard_class_list(
-                            &mut cache.env_2,
+                            &mut cache.native_class_finder,
                             &cache.standard_class_pre_list,
                         );
                         cache.static_method_list.build_list_with_ref(
@@ -53,7 +53,7 @@ pub mod java_method_build_tools {
                     }
                 }
                 _ => {
-                    println!("Attemps to build cache but no cache instance is instanciated");
+                    log::info!("Attemps to build cache but no cache instance is instanciated");
                 }
             }
         }
@@ -166,14 +166,11 @@ pub mod java_method_build_tools {
 
             let mut j_object_store = JObjectStore::new();
 
-            let activity_raw_ptr: jobject = activity
-                .as_ref()
-                .expect("No activity for raw pointer")
-                .as_raw();
+            let activity_ref = env_2
+                .new_local_ref(activity.as_ref().expect("No activity for local ref"))
+                .expect("failed to clone native_activity local ref");
 
-            j_object_store.add_object_with_id("native_activity", unsafe {
-                JObject::from_raw(activity_raw_ptr)
-            });
+            j_object_store.add_object_with_id("native_activity", activity_ref);
 
             let mut java_method_cache = JavaMethodCache {
                 env: env.expect("no env attached to JavaMethodCache"),
@@ -230,14 +227,9 @@ pub mod java_method_build_tools {
     }
     impl<'a: 'static> JavaMethodCache<'a> {
         pub fn print_method_list(&self) {
-            println!("List of the cached java methods :");
+
             for method in self.method_list.methods_list() {
-                println!(
-                    "- {:?}- [{:?}]- [{:?}]",
-                    method.method_name(),
-                    method.method_signature(),
-                    method.method_class()
-                );
+
             }
         }
 
@@ -266,39 +258,58 @@ pub mod java_method_build_tools {
                 if let Some(args) = args.to_jvalue(&mut self.env, &self.instanciate_jobjects) {
                     let call_time = std::time::Instant::now();
                     unsafe {
-                        let result: JValueOwned = self
-                            .env
-                            .call_static_method_unchecked(
-                                JClass::from_raw(find_method.instance_ref().as_raw()),
-                                find_method.method_id(),
-                                return_type,
-                                &args[..],
-                            )
-                            .unwrap_or_else(|_| {
-                                panic!("Error in calling static method [{}]", method_name);
-                            });
-
-                        res = Some(result);
+                        match self.env.call_static_method_unchecked(
+                            JClass::from_raw(find_method.instance_ref().as_raw()),
+                            find_method.method_id(),
+                            return_type,
+                            &args[..],
+                        ) {
+                            Ok(result) => {
+                                res = Some(result);
+                            }
+                            Err(err) => {
+                                log::error!(
+                                    "jni_methods_cache: error calling static method {}.{}{}: {:?}",
+                                    class,
+                                    method_name,
+                                    sig,
+                                    err
+                                );
+                                if self.env.exception_check().unwrap_or(false) {
+                                    let _ = self.env.exception_describe();
+                                    let _ = self.env.exception_clear();
+                                }
+                                return Err(());
+                            }
+                        }
                     }
                 } else {
                     let now = std::time::Instant::now();
                     unsafe {
-                        let result: JValueOwned = self
-                            .env
-                            .call_static_method_unchecked(
-                                JClass::from_raw(find_method.instance_ref().as_raw()),
-                                find_method.method_id(),
-                                return_type,
-                                &[],
-                            )
-                            .unwrap_or_else(|e| {
-                                panic!(
-                                    "Error in calling static method [{}]\n [{:?}]",
-                                    method_name, e
+                        match self.env.call_static_method_unchecked(
+                            JClass::from_raw(find_method.instance_ref().as_raw()),
+                            find_method.method_id(),
+                            return_type,
+                            &[],
+                        ) {
+                            Ok(result) => {
+                                res = Some(result);
+                            }
+                            Err(err) => {
+                                log::error!(
+                                    "jni_methods_cache: error calling static method {}.{}{}: {:?}",
+                                    class,
+                                    method_name,
+                                    sig,
+                                    err
                                 );
-                            });
-
-                        res = Some(result);
+                                if self.env.exception_check().unwrap_or(false) {
+                                    let _ = self.env.exception_describe();
+                                    let _ = self.env.exception_clear();
+                                }
+                                return Err(());
+                            }
+                        }
                     }
                 };
             };
@@ -386,12 +397,9 @@ pub mod java_method_build_tools {
         mut env: jni::JNIEnv<'a>,
         activity: &mut JObject,
     ) -> NativeClassFinder<'a> {
-        let class_loader_name = "java/lang/ClassLoader";
-        let na_activity_class_name = "android/app/NativeActivity";
-
         let na_class: jni::objects::JClass = env
-            .find_class(na_activity_class_name)
-            .unwrap_or_else(|_| panic!("No NativeActivity class name found !"));
+            .get_object_class(&*activity)
+            .unwrap_or_else(|_| panic!("No NativeActivity object class found !"));
 
         let class_loader_method: jni::objects::JMethodID = env
             .get_method_id(na_class, "getClassLoader", "()Ljava/lang/ClassLoader;")
@@ -410,8 +418,8 @@ pub mod java_method_build_tools {
         };
 
         let class_loader_class = env
-            .find_class(class_loader_name)
-            .unwrap_or_else(|_| panic!("No classloader class name found !"));
+            .get_object_class(&class_loader_instance)
+            .unwrap_or_else(|_| panic!("No classloader object class found !"));
 
         let find_class: jni::objects::JMethodID = env
             .get_method_id(
@@ -644,7 +652,7 @@ pub mod java_method_build_tools {
                     if let MethodType::Static = item.method_type {
                         true
                     } else {
-                        println!("non static found");
+
                         false
                     }
                 }) {
@@ -715,7 +723,8 @@ pub mod java_method_build_tools {
                 method_name: &str,
                 signature: &str,
             ) {
-                let class: jni::objects::JObject = env.new_string(class_name).unwrap().into();
+                let load_class_name = class_name.replace('/', ".");
+                let class: jni::objects::JObject = env.new_string(load_class_name).unwrap().into();
                 let method_name: String = method_name.to_string();
                 let signature: String = signature.to_string();
 
@@ -841,7 +850,7 @@ pub mod java_method_build_tools {
                         let j_string = match env.new_string(value) {
                             Ok(j_string) => j_string,
                             Err(e) => {
-                                println!("jni_methods_cache::error env on string creation");
+                                log::error!("jni_methods_cache::error env on string creation");
                                 return None;
                             }
                         };
@@ -869,7 +878,7 @@ pub mod java_method_build_tools {
                                     let j_string = match env.new_string(value) {
                                         Ok(j_string) => j_string,
                                         Err(e) => {
-                                            println!(
+                                            log::info!(
                                                 "jni_methods_cache::error env on string creation"
                                             );
                                             return None;
@@ -1114,17 +1123,37 @@ pub mod java_method_build_tools {
 
             pub fn build_standard_class_list(
                 &mut self,
-                env: &mut jni::JNIEnv<'a>,
+                native_class_finder: &mut NativeClassFinder<'a>,
                 standard_class_pre_list: &StandardClassPreList,
             ) {
                 for class_name in standard_class_pre_list.list.iter() {
-                    match env.find_class(class_name) {
+                    let load_class_name = class_name.replace("/", ".");
+                    let class_name_arg: JObject = native_class_finder
+                        .env
+                        .new_string(load_class_name)
+                        .unwrap()
+                        .into();
+
+                    let class = unsafe {
+                        native_class_finder.env.call_method_unchecked(
+                            &native_class_finder.class_loader,
+                            native_class_finder.find_class_method,
+                            ReturnType::Object,
+                            &[JValue::Object(&class_name_arg).as_jni()],
+                        )
+                    };
+
+                    match class.and_then(|value| value.l()).map(JClass::from) {
                         Ok(class) => {
-                            let new_std_class = StandardClass::new(class_name, class);
+                            let new_std_class = StandardClass::new(class_name.as_str(), class);
                             self.inner.push(new_std_class);
                         }
-                        _ => {
-                            println!("---Class [{:?}] not found in JNIEnv", class_name)
+                        Err(err) => {
+                            log::info!(
+                                "---Class [{:?}] not found through Android ClassLoader: {:?}",
+                                class_name,
+                                err
+                            )
                         }
                     }
                 }

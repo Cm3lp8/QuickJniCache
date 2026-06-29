@@ -91,7 +91,7 @@ mod jvm_caller {
             };
 
             if let Err(e) = self.event_channel.send(msg) {
-                println!("Jni error in calling jvm [{:?}]", e)
+                log::error!("Jni error in calling jvm [{:?}]", e)
             }
 
             if let Ok(res) = self.jvm_result.wait_for_result() {
@@ -99,15 +99,15 @@ mod jvm_caller {
                     if let Ok(r) = result.to_value() {
                         Ok(Some(*r))
                     } else {
-                        println!("JNI Cerror");
+                        log::error!("JNI Cerror");
                         Err(())
                     }
                 } else {
-                    println!("JNI ERRORNONE");
+                    log::error!("JNI ERRORNONE");
                     Ok(None)
                 }
             } else {
-                println!("JNI C Wait Error");
+                log::error!("JNI C Wait Error");
                 Err(())
             }
         }
@@ -163,7 +163,7 @@ mod event_handler {
                     ) {
                         Ok(res) => if let Ok(_) = response_channel.send(res) {},
                         Err(e) => {
-                            println!("  JNI Exe A[{:?}]", e);
+                            log::info!("  JNI Exe A[{:?}]", e);
                         }
                     }
                 }

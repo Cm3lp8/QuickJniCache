@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 /***** Java Method cache module ******/
-use jni::objects::JObject;
+use jni::objects::{GlobalRef, JObject};
 use jni::signature::ReturnType;
 use parking_lot::Once;
 
@@ -21,7 +21,7 @@ use self::methods_cache::JVMResponse;
 pub static INIT: Once = Once::new();
 pub static mut JAVAVM: Option<jni::JavaVM> = None;
 pub static mut JNIENV: Option<jni::JNIEnv> = None;
-pub static mut ACTIVITY: Option<JObject> = None;
+pub static mut ACTIVITY: Option<GlobalRef> = None;
 pub static mut JAVAMETHODCACHE: JavaMethods = JavaMethods::None;
 pub static mut JVMCALLER: Option<JvmCaller> = None;
 

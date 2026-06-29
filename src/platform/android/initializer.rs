@@ -8,6 +8,7 @@ use crate::jni_methods_cache::JAVAMETHODCACHE;
 use crate::jni_methods_cache::JAVAVM;
 use crate::jni_methods_cache::JNIENV;
 use crate::jni_methods_cache::JVMCALLER;
+use jni::objects::JObject;
 
 use winit::platform::android::activity::AndroidApp;
 impl<'a: 'static> JavaMethodCache<'a> {
@@ -15,6 +16,20 @@ impl<'a: 'static> JavaMethodCache<'a> {
         android_app: &AndroidApp,
         build_cb: impl FnOnce(&mut JavaMethodCacheBuilder<'a>) + std::marker::Send + 'static,
     ) {
+        unsafe {
+            if ACTIVITY.is_none() {
+                let jv_vm_ptr = android_app.vm_as_ptr() as *mut jni::sys::JavaVM;
+                let java_vm = std::mem::ManuallyDrop::new(jni::JavaVM::from_raw(jv_vm_ptr).unwrap());
+                let mut env = java_vm.get_env().expect("No env on init thread");
+                let activity_raw = JObject::from_raw(android_app.activity_as_ptr() as *mut jni::sys::_jobject);
+                let activity_global = env
+                    .new_global_ref(&activity_raw)
+                    .expect("failed to create NativeActivity global ref on init thread");
+                std::mem::forget(activity_raw);
+                ACTIVITY = Some(activity_global);
+            }
+        }
+
         let executor_channel = ExecutorChannel::new();
         let executor_receiver = executor_channel.get_receiver();
         let android_app = android_app.clone();
@@ -52,23 +67,22 @@ mod initializer_internal {
                 .as_ref()
                 .expect("no java vm attached")
                 .attach_current_thread_permanently();
-            let activity = unsafe {
-                JObject::from_raw(android_app.activity_as_ptr() as *mut jni::sys::_jobject)
-            };
-            let mut activity_2 = unsafe {
-                JObject::from_raw(android_app.activity_as_ptr() as *mut jni::sys::_jobject)
-            };
-
-            let java_vm_2 = unsafe { jni::JavaVM::from_raw(jv_vm_ptr).unwrap() };
-            unsafe {
-                JNIENV = None;
-                ACTIVITY = Some(activity);
-            }
             let env: jni::JNIEnv =
                 unsafe { JAVAVM.as_ref().expect("no jvm").get_env().expect("No env") };
+
+            unsafe {
+                JNIENV = None;
+            }
+
+            let activity_local = env
+                .new_local_ref(unsafe { ACTIVITY.as_ref().expect("no native activity").as_obj() })
+                .expect("failed to create NativeActivity local ref");
+            let activity_local: &'static mut JObject<'static> =
+                Box::leak(Box::new(activity_local));
+
             let mut java_method_builder = JavaMethodCacheBuilder {
                 env: Some(env),
-                activity: unsafe { Some(ACTIVITY.as_mut().expect("no native activity")) },
+                activity: Some(activity_local),
                 java_vm: unsafe { Some(&JAVAVM.as_ref().expect("no jvm")) },
                 standard_class_pre_list: StandardClassPreList::new(),
                 java_methods_list_ref: JavaMethodsListRefs::new(),
